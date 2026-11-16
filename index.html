@@ -47,12 +47,18 @@
   .badge.ok{background:color-mix(in srgb,var(--ok) 12%,transparent);border-color:var(--ok)}
   .badge.none{background:color-mix(in srgb,var(--warn) 12%,transparent);border-color:var(--warn)}
   .badge.busy{background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:var(--accent)}
-  .tablewrap{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums}
-  td,th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-  th{font-size:.72rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.03em}
-  td:nth-child(3),td:nth-child(4),th:nth-child(3),th:nth-child(4){text-align:right}
-  tr:last-child td{border-bottom:none}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .chips span{font-size:.8rem;color:var(--muted);width:100%}
+  .chip{margin:0;width:auto;padding:7px 12px;border-radius:999px;font-size:.9rem;font-weight:600;
+    background:transparent;color:var(--ink);border:1px solid var(--line)}
+  .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .rate{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:10px 0;border-bottom:1px solid var(--line);
+    font-variant-numeric:tabular-nums}
+  .rate:last-child{border-bottom:none}
+  .rate .code{grid-row:span 2;font-weight:700;font-size:1.05rem;align-self:center;min-width:3.2em}
+  .rate .code small{display:block;font-weight:500;font-size:.72rem}
+  .rate .l1{font-size:1rem;font-weight:600}
+  .rate .l2{font-size:.88rem;color:var(--muted)}
   .y{color:var(--ok)} .n{color:var(--warn)}
 </style>
 </head>
@@ -63,12 +69,8 @@
 
   <div class="card">
     <div class="badge" id="badge"></div>
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>Moneda</th><th>Tasa</th><th>1 EGP =</th><th>En EGP</th></tr></thead>
-        <tbody id="rateTable"></tbody>
-      </table>
-    </div>
+    <div class="chips" id="chips"></div>
+    <div id="rateList"></div>
   </div>
 
   <div class="card" id="fields"></div>
@@ -94,6 +96,8 @@
 
   var $ = function(id){ return document.getElementById(id); };
   var busy = false, lastError = false, lastEdited = 'EGP';
+  var baseCode = 'EGP';
+  try { baseCode = localStorage.getItem('egp-converter-base') || 'EGP'; } catch(e){}
 
   // Campos de entrada
   var fieldsHtml = '<div class="field"><label for="in-EGP"><b>EGP</b><span>Libra egipcia</span></label>' +
@@ -129,7 +133,7 @@
     var n = parseFloat(v); return isNaN(n) ? null : n;
   }
   function fmt(n, dec){ return n.toLocaleString('es-CO', {minimumFractionDigits: dec, maximumFractionDigits: dec}); }
-  function smart(n){ return fmt(n, n >= 100 ? 2 : n >= 1 ? 4 : 6); }
+  function smart(n){ return fmt(n, n >= 100 ? 2 : n >= 0.01 ? 4 : 6); }
 
   function recalc(){
     var v = parse($('in-' + lastEdited).value), base = null;
@@ -181,10 +185,19 @@
         'Se usan valores de ejemplo; conéctate a internet para descargarlas.</small></div>';
     }
 
-    $('rateTable').innerHTML = CURRENCIES.map(function(c){
-      var ok = real(c), r = rate(c);
-      return '<tr><td><b>' + c.code + '</b></td><td class="' + (ok ? 'y' : 'n') + '">' +
-        (ok ? '✔ Real' : '✖ Ejemplo') + '</td><td>' + smart(r) + '</td><td>' + smart(1 / r) + '</td></tr>';
+    var ALLC = [{ code:'EGP' }].concat(CURRENCIES);
+    function rel(c){ return c.code === 'EGP' ? 1 : rate(c); }      // valor de 1 EGP en c
+    function isReal(c){ return c.code === 'EGP' || real(c); }
+    var base = ALLC.filter(function(c){ return c.code === baseCode; })[0] || ALLC[0];
+    $('chips').innerHTML = '<span>Ver el cambio de:</span>' + ALLC.map(function(c){
+      return '<button class="chip" data-code="' + c.code + '" aria-pressed="' + (c.code === base.code) + '">' + c.code + '</button>';
+    }).join('');
+    $('rateList').innerHTML = ALLC.filter(function(c){ return c.code !== base.code; }).map(function(c){
+      var r = rel(c) / rel(base), ok = isReal(c) && isReal(base);
+      return '<div class="rate"><div class="code">' + c.code + '<small class="' + (ok ? 'y' : 'n') + '">' +
+        (ok ? '✔ real' : '✖ ejemplo') + '</small></div>' +
+        '<div class="l1">1 ' + base.code + ' = ' + smart(r) + ' ' + c.code + '</div>' +
+        '<div class="l2">1 ' + c.code + ' = ' + smart(1 / r) + ' ' + base.code + '</div></div>';
     }).join('');
   }
 
@@ -224,6 +237,13 @@
 
   ['EGP'].concat(CURRENCIES.map(function(c){ return c.code; })).forEach(function(code){
     $('in-' + code).addEventListener('input', function(){ lastEdited = code; recalc(); });
+  });
+  $('chips').addEventListener('click', function(e){
+    var code = e.target.getAttribute && e.target.getAttribute('data-code');
+    if (!code) return;
+    baseCode = code;
+    try { localStorage.setItem('egp-converter-base', code); } catch(err){}
+    render();
   });
   $('refresh').addEventListener('click', update);
   window.addEventListener('online', update);
