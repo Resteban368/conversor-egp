@@ -22,23 +22,21 @@
   body{margin:0;background:var(--bg);color:var(--ink);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     display:flex;justify-content:center;padding:24px 16px}
-  main{width:100%;max-width:440px}
+  main{width:100%;max-width:460px}
   h1{font-size:1.4rem;margin:0 0 4px}
   .sub{color:var(--muted);font-size:.9rem;margin:0 0 20px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:14px}
   label{display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted);margin-bottom:6px}
   label b{color:var(--ink);font-weight:600}
-  .field{margin-bottom:16px}
+  .field{margin-bottom:14px}
   .field:last-child{margin-bottom:0}
-  input{width:100%;font-size:1.5rem;padding:10px 12px;border-radius:10px;
+  input{width:100%;font-size:1.4rem;padding:10px 12px;border-radius:10px;
     border:1px solid var(--line);background:transparent;color:var(--ink);font-variant-numeric:tabular-nums}
   input:focus{outline:2px solid var(--accent);border-color:transparent}
-  .status{display:flex;align-items:center;gap:8px;font-size:.85rem;margin-bottom:10px}
+  .status{display:flex;align-items:center;gap:8px;font-size:.85rem;margin-bottom:6px}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
   .dot.on{background:var(--ok)} .dot.off{background:var(--warn)}
-  .rates{font-size:.9rem;line-height:1.7;font-variant-numeric:tabular-nums}
-  .meta{font-size:.8rem;color:var(--muted);margin-top:8px}
-  .warn{color:var(--warn)}
+  .meta{font-size:.8rem;color:var(--muted)}
   button{margin-top:12px;width:100%;padding:11px;border-radius:10px;border:none;
     background:var(--accent);color:#fff;font-size:1rem;font-weight:600;cursor:pointer}
   button:disabled{opacity:.5;cursor:default}
@@ -49,45 +47,34 @@
   .badge.ok{background:color-mix(in srgb,var(--ok) 12%,transparent);border-color:var(--ok)}
   .badge.none{background:color-mix(in srgb,var(--warn) 12%,transparent);border-color:var(--warn)}
   .badge.busy{background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:var(--accent)}
-  table{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
-  td,th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left}
-  th{font-size:.75rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.03em}
-  td:nth-child(3){text-align:right}
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums}
+  td,th{padding:7px 4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{font-size:.72rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.03em}
+  td:nth-child(3),td:nth-child(4),th:nth-child(3),th:nth-child(4){text-align:right}
   tr:last-child td{border-bottom:none}
   .y{color:var(--ok)} .n{color:var(--warn)}
 </style>
 </head>
 <body>
 <main>
-  <h1>Libra egipcia → USD / COP</h1>
-  <p class="sub">Escribe en cualquier casilla y las demás se calculan.</p>
+  <h1>Conversor de libra egipcia</h1>
+  <p class="sub">USD · COP · EUR · ALL. Escribe en cualquier casilla y las demás se calculan.</p>
 
   <div class="card">
     <div class="badge" id="badge"></div>
-    <table>
-      <thead><tr><th>Tasa</th><th>Estado</th><th>Valor</th></tr></thead>
-      <tbody id="rateTable"></tbody>
-    </table>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Moneda</th><th>Tasa</th><th>1 EGP =</th><th>En EGP</th></tr></thead>
+        <tbody id="rateTable"></tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="card">
-    <div class="field">
-      <label for="egp"><b>EGP</b><span>Libra egipcia</span></label>
-      <input id="egp" inputmode="decimal" value="100">
-    </div>
-    <div class="field">
-      <label for="usd"><b>USD</b><span>Dólar estadounidense</span></label>
-      <input id="usd" inputmode="decimal">
-    </div>
-    <div class="field">
-      <label for="cop"><b>COP</b><span>Peso colombiano</span></label>
-      <input id="cop" inputmode="decimal">
-    </div>
-  </div>
+  <div class="card" id="fields"></div>
 
   <div class="card">
     <div class="status"><span class="dot" id="dot"></span><span id="net"></span></div>
-    <div class="rates" id="rates"></div>
     <div class="meta" id="meta"></div>
     <button id="refresh">Actualizar tasas</button>
   </div>
@@ -95,61 +82,65 @@
 
 <script>
 (function(){
-  var KEY = 'egp-converter-rates-v1';
-  // Valores de respaldo aproximados: solo se usan si nunca hubo conexión.
-  var FALLBACK = { usd: 0.0205, cop: 80, time: null, source: 'valores de ejemplo (sin conexión previa)' };
+  // Monedas destino. Para agregar otra, basta con sumar una línea aquí.
+  // ex = tasa de ejemplo (1 EGP = ex), solo se usa si nunca se descargó.
+  var CURRENCIES = [
+    { code:'USD', name:'Dólar estadounidense', dec:2, ex:0.0205 },
+    { code:'COP', name:'Peso colombiano',      dec:0, ex:80 },
+    { code:'EUR', name:'Euro',                 dec:2, ex:0.0177 },
+    { code:'ALL', name:'Lek albanés',          dec:0, ex:1.70 }
+  ];
+  var KEY = 'egp-converter-rates-v2', OLD_KEY = 'egp-converter-rates-v1';
 
   var $ = function(id){ return document.getElementById(id); };
-  var egp = $('egp'), usd = $('usd'), cop = $('cop');
-  var rates = load() || FALLBACK;
-  var lastEdited = 'egp';
-  var busy = false, lastError = false;
+  var busy = false, lastError = false, lastEdited = 'EGP';
 
+  // Campos de entrada
+  var fieldsHtml = '<div class="field"><label for="in-EGP"><b>EGP</b><span>Libra egipcia</span></label>' +
+    '<input id="in-EGP" inputmode="decimal" value="100"></div>';
+  CURRENCIES.forEach(function(c){
+    fieldsHtml += '<div class="field"><label for="in-' + c.code + '"><b>' + c.code + '</b><span>' + c.name +
+      '</span></label><input id="in-' + c.code + '" inputmode="decimal"></div>';
+  });
+  $('fields').innerHTML = fieldsHtml;
+
+  // rates = { time, source, r: { USD: n, ... } } ; una moneda sin valor real usa el ejemplo
   function load(){
-    try { var r = JSON.parse(localStorage.getItem(KEY)); return (r && r.usd && r.cop) ? r : null; }
-    catch(e){ return null; }
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.r) return s;
+      var o = JSON.parse(localStorage.getItem(OLD_KEY)); // versión anterior: solo USD y COP
+      if (o && o.usd && o.cop) return { time:o.time, source:o.source, r:{ USD:o.usd, COP:o.cop } };
+    } catch(e){}
+    return { time:null, source:null, r:{} };
   }
-  function save(r){ try { localStorage.setItem(KEY, JSON.stringify(r)); } catch(e){} }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(rates)); } catch(e){} }
+  var rates = load();
+
+  function rate(c){ return rates.r[c.code] || c.ex; }
+  function real(c){ return !!(rates.time && rates.r[c.code]); }
 
   function parse(v){
     v = String(v).trim().replace(/\s/g,'');
-    // Acepta "1.234,56" y "1,234.56"
     if (v.indexOf(',') > -1 && v.indexOf('.') > -1) {
       v = v.lastIndexOf(',') > v.lastIndexOf('.') ? v.replace(/\./g,'').replace(',', '.') : v.replace(/,/g,'');
-    } else { v = v.replace(',', '.'); }
+    } else if ((v.match(/\./g) || []).length > 1) { v = v.replace(/\./g,''); }
+    else { v = v.replace(',', '.'); }
     var n = parseFloat(v); return isNaN(n) ? null : n;
   }
   function fmt(n, dec){ return n.toLocaleString('es-CO', {minimumFractionDigits: dec, maximumFractionDigits: dec}); }
+  function smart(n){ return fmt(n, n >= 100 ? 2 : n >= 1 ? 4 : 6); }
 
   function recalc(){
-    var base;
-    if (lastEdited === 'egp') base = parse(egp.value);
-    else if (lastEdited === 'usd') { var u = parse(usd.value); base = u === null ? null : u / rates.usd; }
-    else { var c = parse(cop.value); base = c === null ? null : c / rates.cop; }
-    if (base === null) {
-      if (lastEdited !== 'egp') egp.value = '';
-      if (lastEdited !== 'usd') usd.value = '';
-      if (lastEdited !== 'cop') cop.value = '';
-      return;
+    var v = parse($('in-' + lastEdited).value), base = null;
+    if (v !== null) {
+      if (lastEdited === 'EGP') base = v;
+      else { var c = CURRENCIES.filter(function(x){ return x.code === lastEdited; })[0]; base = v / rate(c); }
     }
-    if (lastEdited !== 'egp') egp.value = fmt(base, 2);
-    if (lastEdited !== 'usd') usd.value = fmt(base * rates.usd, 2);
-    if (lastEdited !== 'cop') cop.value = fmt(base * rates.cop, 0);
-  }
-
-  function render(){
-    $('rates').innerHTML =
-      '1 EGP = ' + fmt(rates.usd, 4) + ' USD<br>' +
-      '1 EGP = ' + fmt(rates.cop, 2) + ' COP<br>' +
-      '1 USD = ' + fmt(1 / rates.usd, 2) + ' EGP';
-    var online = navigator.onLine;
-    $('dot').className = 'dot ' + (online ? 'on' : 'off');
-    $('net').textContent = online ? 'Con conexión' : 'Sin conexión — usando las últimas tasas guardadas';
-    $('meta').innerHTML = rates.time
-      ? 'Tasas del ' + new Date(rates.time).toLocaleString('es-CO') + ' · ' + rates.source
-      : '<span class="warn">Aún no hay tasas reales guardadas: ' + rates.source + '. Conéctate una vez para actualizarlas.</span>';
-    $('refresh').disabled = !online || busy;
-    renderStatus();
+    if (lastEdited !== 'EGP') $('in-EGP').value = base === null ? '' : fmt(base, 2);
+    CURRENCIES.forEach(function(c){
+      if (c.code !== lastEdited) $('in-' + c.code).value = base === null ? '' : fmt(base * rate(c), c.dec);
+    });
   }
 
   function ago(t){
@@ -161,38 +152,53 @@
     return 'hace ' + Math.round(h / 24) + ' días';
   }
 
-  function renderStatus(){
-    var has = !!rates.time;
+  function render(){
+    var online = navigator.onLine;
+    $('dot').className = 'dot ' + (online ? 'on' : 'off');
+    $('net').textContent = online ? 'Con conexión' : 'Sin conexión: se usan las últimas tasas guardadas';
+    $('meta').textContent = rates.time ? 'Fuente: ' + rates.source : 'Aún no hay tasas descargadas.';
+    $('refresh').disabled = !online || busy;
+
+    var nReal = CURRENCIES.filter(real).length, all = nReal === CURRENCIES.length;
     var b = $('badge');
     if (busy) {
       b.className = 'badge busy';
       b.innerHTML = '<span class="icon">⏳</span><div>Descargando tasas…' +
-        (has ? '<small>Mientras tanto se usan las guardadas</small>' : '') + '</div>';
-    } else if (has) {
+        (rates.time ? '<small>Mientras tanto se usan las guardadas</small>' : '') + '</div>';
+    } else if (all) {
       b.className = 'badge ok';
       b.innerHTML = '<span class="icon">✅</span><div>Tasas descargadas y guardadas' +
         '<small>' + new Date(rates.time).toLocaleString('es-CO') + ' (' + ago(rates.time) + ')' +
         (lastError ? ' · la última actualización falló, se usan estas' : '') + '</small></div>';
+    } else if (nReal > 0) {
+      b.className = 'badge none';
+      b.innerHTML = '<span class="icon">⚠️</span><div>Faltan tasas por descargar' +
+        '<small>Las marcadas como "Ejemplo" no son reales. Abre la app con internet para completarlas.</small></div>';
     } else {
       b.className = 'badge none';
       b.innerHTML = '<span class="icon">⚠️</span><div>Tasas NO descargadas' +
         '<small>' + (lastError ? 'No se pudo descargar. ' : '') +
         'Se usan valores de ejemplo; conéctate a internet para descargarlas.</small></div>';
     }
-    var rows = [
-      ['EGP → USD', rates.usd, 6],
-      ['EGP → COP', rates.cop, 2],
-      ['USD → EGP', 1 / rates.usd, 2],
-      ['USD → COP', rates.cop / rates.usd, 2]
-    ];
-    $('rateTable').innerHTML = rows.map(function(r){
-      return '<tr><td>' + r[0] + '</td><td class="' + (has ? 'y' : 'n') + '">' +
-        (has ? '✔ Descargada' : '✖ Ejemplo') + '</td><td>' + fmt(r[1], r[2]) + '</td></tr>';
+
+    $('rateTable').innerHTML = CURRENCIES.map(function(c){
+      var ok = real(c), r = rate(c);
+      return '<tr><td><b>' + c.code + '</b></td><td class="' + (ok ? 'y' : 'n') + '">' +
+        (ok ? '✔ Real' : '✖ Ejemplo') + '</td><td>' + smart(r) + '</td><td>' + smart(1 / r) + '</td></tr>';
     }).join('');
   }
 
   function fetchJSON(url){
     return fetch(url, {cache:'no-store'}).then(function(r){ if(!r.ok) throw 0; return r.json(); });
+  }
+  function pick(src, lower){
+    var out = {}, n = 0;
+    CURRENCIES.forEach(function(c){
+      var v = src[lower ? c.code.toLowerCase() : c.code];
+      if (typeof v === 'number' && v > 0) { out[c.code] = v; n++; }
+    });
+    if (n !== CURRENCIES.length) throw 0;
+    return out;
   }
 
   function update(){
@@ -202,22 +208,22 @@
     fetchJSON('https://open.er-api.com/v6/latest/EGP')
       .then(function(d){
         if (d.result !== 'success') throw 0;
-        return { usd: d.rates.USD, cop: d.rates.COP, source: 'open.er-api.com' };
+        return { r: pick(d.rates, false), source: 'open.er-api.com' };
       })
       .catch(function(){
         return fetchJSON('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/egp.json')
-          .then(function(d){ return { usd: d.egp.usd, cop: d.egp.cop, source: 'fawazahmed0 currency-api' }; });
+          .then(function(d){ return { r: pick(d.egp, true), source: 'fawazahmed0 currency-api' }; });
       })
-      .then(function(r){
-        if (!r.usd || !r.cop) throw 0;
-        r.time = Date.now(); rates = r; save(r); lastError = false; recalc();
+      .then(function(res){
+        rates = { time: Date.now(), source: res.source, r: res.r };
+        save(); lastError = false; recalc();
       })
-      .catch(function(){ lastError = true; /* se mantienen las tasas guardadas */ })
+      .catch(function(){ lastError = true; })
       .then(function(){ busy = false; btn.textContent = 'Actualizar tasas'; render(); });
   }
 
-  [['egp',egp],['usd',usd],['cop',cop]].forEach(function(p){
-    p[1].addEventListener('input', function(){ lastEdited = p[0]; recalc(); });
+  ['EGP'].concat(CURRENCIES.map(function(c){ return c.code; })).forEach(function(code){
+    $('in-' + code).addEventListener('input', function(){ lastEdited = code; recalc(); });
   });
   $('refresh').addEventListener('click', update);
   window.addEventListener('online', update);
